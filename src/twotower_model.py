@@ -5,33 +5,40 @@ import torch.nn.functional as F
 class TwoTowerModel(nn.Module):
     def __init__(self, num_users, num_items, embedding_dim):
         super().__init__()
-        self.user_embedding = nn.Embedding(num_users, embedding_dim)
-        self.item_embedding = nn.Embedding(num_items, embedding_dim)
 
-        # MLP
-        self.user_mlp = nn.Sequential(
+        # user id embedding
+        self.user_id_embedding = nn.Embedding(num_users, embedding_dim)
+        # user id MLP
+        self.user_id_mlp = nn.Sequential(
             nn.Linear(embedding_dim, 128),
             nn.ReLU(),
             nn.Linear(128, embedding_dim)
         )
 
-        self.item_mlp = nn.Sequential(
+        # item id embedding
+        self.item_id_embedding = nn.Embedding(num_items, embedding_dim)
+        # item feature mlp
+        self.item_feature_mlp = nn.Sequential(
             nn.Linear(embedding_dim, 128),
             nn.ReLU(),
             nn.Linear(128, embedding_dim)
         )
+        # combine item id embedding and item feature mlp
+        self.item_tower = nn.Linear(2*embedding_dim,embedding_dim)
 
     def encode_user(self, user_ids):
-        u = self.user_embedding(user_ids)
-        u = self.user_mlp(u) # MLP
+        u = self.user_id_embedding(user_ids)
+        u = self.user_id_mlp(u) # MLP
         return F.normalize(u, dim=-1)
 
-    def encode_item(self, item_ids):
-        v = self.item_embedding(item_ids)
-        v = self.item_mlp(v) # MLP
+    def encode_item(self, item_ids, item_features):
+        v_id = self.item_id_embedding(item_ids)
+        v_feature = self.item_feature_mlp(item_features) # MLP
+        v_item_input = torch.cat([v_id,v_feature],dim=1)
+        v = self.item_tower(v_item_input)
         return F.normalize(v, dim=-1)
 
-    def forward(self, user_ids, pos_item_ids):
+    def forward(self, user_ids, item_ids, item_features):
         u = self.encode_user(user_ids)
-        v = self.encode_item(pos_item_ids)
+        v = self.encode_item(item_ids, item_features)
         return u, v

@@ -7,5 +7,4 @@ train:
 model:
   embedding_dim: 64
 eval:
-  topk_list: [10, 50]
-
+  topk_list: [10, 50, 100]
