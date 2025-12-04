@@ -62,9 +62,10 @@ def train(num_epochs: int = 10, temperature: float = 1.0, model_save_path: str =
         for batch in progress_bar:
             user_ids = batch["user_id"].to(device)
             item_ids = batch["item_id"].to(device)
+            item_features = batch['item_feature'].to(device)
 
             # forward
-            u, v = model(user_ids, item_ids)
+            u, v = model(user_ids, item_ids, item_features)
 
             # calculate loss
             loss = contrastive_loss(u, v, temperature=temperature)
