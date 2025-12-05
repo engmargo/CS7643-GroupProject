@@ -82,34 +82,36 @@ def train(num_epochs: int = 10, temperature: float = 1.0, model_save_path: str =
         avg_loss = epoch_loss / max(num_batches, 1)
         print(f"Epoch {epoch}: avg loss = {avg_loss:.4f}")
 
-        # 4. save model
-        if model_save_path is None:
-            model_save_path = os.path.join(PROCESSED_DIR, "two_tower_model.pt")
-        if item_emb_save_path is None:
-            item_emb_save_path = os.path.join(PROCESSED_DIR, "item_embeddings.pt")
+    # 4. save model
+    if model_save_path is None:
+        model_save_path = os.path.join(PROCESSED_DIR, "two_tower_model.pt")
+    if item_emb_save_path is None:
+        item_emb_save_path = os.path.join(PROCESSED_DIR, "item_embeddings.pt")
 
-        os.makedirs(PROCESSED_DIR, exist_ok=True)
+    os.makedirs(PROCESSED_DIR, exist_ok=True)
 
-        # save parameters (weights)
-        torch.save(model.state_dict(), model_save_path)
-        print(f"Model parameters are saved to: {model_save_path}")
+    torch.save(model.state_dict(), model_save_path)
+    print(f"Model parameters are saved to: {model_save_path}")
 
-        # calculate all item embeddings and save
-        model.eval()
-        with torch.no_grad():
-            all_item_ids = torch.arange(num_items, device=device, dtype=torch.long)
-            all_item_emb = model.encode_item(all_item_ids)  # shape: (num_items, D)
-            all_item_emb = all_item_emb.cpu()
+    # calculate all item embeddings and save
+    model.eval()
+    with torch.no_grad():
+        all_item_ids = torch.arange(num_items, device=device, dtype=torch.long)
+        item_feature_path = "data/processed/item_features.npy"
+        all_item_features = torch.from_numpy(np.load(item_feature_path)).to(device)
+        all_item_emb = model.encode_item(all_item_ids, all_item_features)
 
-        torch.save(
-            {
-                "item_embeddings": all_item_emb,
-                "num_items": num_items,
-                "embedding_dim": EMBEDDING_DIM,
-            },
-            item_emb_save_path,
-        )
-        print(f"All item embeddings are saved to: {item_emb_save_path}")
+        all_item_emb = all_item_emb.cpu()
+
+    torch.save(
+        {
+            "item_embeddings": all_item_emb,
+            "num_items": num_items,
+            "embedding_dim": EMBEDDING_DIM,
+        },
+        item_emb_save_path,
+    )
+    print(f"All item embeddings are saved to: {item_emb_save_path}")
 
 
 if __name__ == "__main__":
