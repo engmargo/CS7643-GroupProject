@@ -133,4 +133,4 @@ def train(num_epochs: int = 10, temperature: float = 1.0, model_save_path: str =
 
 
 if __name__ == "__main__":
-    train()
+    train(num_epochs=NUM_EPOCHS)

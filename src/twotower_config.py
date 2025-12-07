@@ -10,7 +10,10 @@ CONFIG_PATH = os.path.join(ROOT, "configs", "twotower_config.yaml")
 with open(CONFIG_PATH, "r") as f:
     _raw_config: Dict[str, Any] = yaml.safe_load(f)
 
+PROCESSED_DIR: str = _raw_config["preprocess"]["PROCESSED_DIR"]
+
 # train
+NUM_EPOCHS: int = _raw_config["train"]["num_epochs"]
 BATCH_SIZE: int = _raw_config["train"]["batch_size"]
 LR: float = _raw_config["train"]["lr"]
 
