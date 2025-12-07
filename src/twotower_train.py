@@ -39,20 +39,20 @@ def train(num_epochs: int = 10, temperature: float = 1.0, model_save_path: str =
     print(f"Using device: {device}")
 
     # 1. load data
-    ZIP_PATH = "processed_data.zip"
     DOMAIN = "Electronics"
-
-    temp_dir = unzip(ZIP_PATH, DOMAIN)
-    data_maps, item_features, datasets_dict = load_processed_data(temp_dir, DOMAIN)
+    #ZIP_PATH = "processed_data.zip"
+    #temp_dir = unzip(ZIP_PATH, DOMAIN)
+    temp_dir = "/content/drive/MyDrive/CS7643-GroupProject-Colab/processed"
+    data_maps, item_features_np, datasets_dict = load_processed_data(temp_dir, DOMAIN)
 
     num_users = len(data_maps["user2id"])  # includes index 0 (PAD)
     num_items = len(data_maps["item2id"])  # includes index 0 (PAD)
-    FEATURE_DIM = item_features.shape[1]
+    FEATURE_DIM = item_features_np.shape[1]
 
     train_dataset = TwoTowerTrainDataset(
         hf_dataset=datasets_dict["train"],
         data_maps=data_maps,
-        item_features=item_features,
+        item_features=item_features_np,
     )
 
     train_loader = DataLoader(
@@ -117,7 +117,7 @@ def train(num_epochs: int = 10, temperature: float = 1.0, model_save_path: str =
     model.eval()
     with torch.no_grad():
         all_item_ids = torch.arange(num_items, device=device, dtype=torch.long)
-        all_item_features = torch.from_numpy(item_features).to(device)
+        all_item_features = torch.from_numpy(item_features_np).to(device)
         all_item_emb = model.encode_item(all_item_ids, all_item_features)
         all_item_emb = all_item_emb.cpu()
 

@@ -1,6 +1,5 @@
 preprocess:
-  DATA_RAW_PATH: "data/raw/Electronics.jsonl.gz"
-  PROCESSED_DIR: "data/processed"
+  PROCESSED_DIR: "/content/drive/MyDrive/CS7643-GroupProject-Colab/processed"
 train:
   batch_size: 512
   lr: 0.001
