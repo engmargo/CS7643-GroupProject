@@ -1,11 +1,14 @@
 import torch
 import torch.nn.functional as F
+from torch.utils.data import DataLoader
+import os
 import numpy as np
 from tqdm import tqdm
 from torch.optim import Adam
 from twotower_config import *
-from dataset import get_train_loader
 from twotower_model import TwoTowerModel
+from load_processed_data import unzip, load_processed_data, get_ft_by_inter
+from twotower_dataset import TwoTowerTrainDataset
 
 
 def set_seed(seed: int = 42) -> None:
@@ -13,10 +16,6 @@ def set_seed(seed: int = 42) -> None:
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        # Mac M1/M2
-        torch.mps.manual_seed(seed)
-
 
 def get_device() -> torch.device:
     if torch.cuda.is_available():
@@ -40,14 +39,35 @@ def train(num_epochs: int = 10, temperature: float = 1.0, model_save_path: str =
     print(f"Using device: {device}")
 
     # 1. load data
-    train_loader, num_users, num_items = get_train_loader(BATCH_SIZE)
-    print(f"num_users = {num_users}, num_items = {num_items}")
+    DOMAIN = "Electronics"
+    #ZIP_PATH = "processed_data.zip"
+    #temp_dir = unzip(ZIP_PATH, DOMAIN)
+    temp_dir = "/content/drive/MyDrive/CS7643-GroupProject-Colab/processed"
+    data_maps, item_features_np, datasets_dict = load_processed_data(temp_dir, DOMAIN)
+
+    num_users = len(data_maps["user2id"])  # includes index 0 (PAD)
+    num_items = len(data_maps["item2id"])  # includes index 0 (PAD)
+    FEATURE_DIM = item_features_np.shape[1]
+
+    train_dataset = TwoTowerTrainDataset(
+        hf_dataset=datasets_dict["train"],
+        data_maps=data_maps,
+        item_features=item_features_np,
+    )
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        num_workers=4,
+    )
 
     # 2. initialize model
     model = TwoTowerModel(
         num_users=num_users,
         num_items=num_items,
         embedding_dim=EMBEDDING_DIM,
+        item_feature_dim=FEATURE_DIM
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
@@ -93,14 +113,12 @@ def train(num_epochs: int = 10, temperature: float = 1.0, model_save_path: str =
     torch.save(model.state_dict(), model_save_path)
     print(f"Model parameters are saved to: {model_save_path}")
 
-    # calculate all item embeddings and save
+    # 5. calculate all item embeddings and save
     model.eval()
     with torch.no_grad():
         all_item_ids = torch.arange(num_items, device=device, dtype=torch.long)
-        item_feature_path = "data/processed/item_features.npy"
-        all_item_features = torch.from_numpy(np.load(item_feature_path)).to(device)
+        all_item_features = torch.from_numpy(item_features_np).to(device)
         all_item_emb = model.encode_item(all_item_ids, all_item_features)
-
         all_item_emb = all_item_emb.cpu()
 
     torch.save(
@@ -115,4 +133,4 @@ def train(num_epochs: int = 10, temperature: float = 1.0, model_save_path: str =
 
 
 if __name__ == "__main__":
-    train()
+    train(num_epochs=NUM_EPOCHS)

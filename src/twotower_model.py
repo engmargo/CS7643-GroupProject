@@ -3,23 +3,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class TwoTowerModel(nn.Module):
-    def __init__(self, num_users, num_items, embedding_dim):
+    def __init__(self, num_users, num_items, embedding_dim, item_feature_dim):
         super().__init__()
 
         # user id embedding
-        self.user_id_embedding = nn.Embedding(num_users, embedding_dim)
-        # user id MLP
-        self.user_id_mlp = nn.Sequential(
-            nn.Linear(embedding_dim, 128),
-            nn.ReLU(),
-            nn.Linear(128, embedding_dim)
-        )
+        self.user_id_embedding = nn.Embedding(num_users, embedding_dim, padding_idx=0)
 
         # item id embedding
-        self.item_id_embedding = nn.Embedding(num_items, embedding_dim)
+        self.item_id_embedding = nn.Embedding(num_items, embedding_dim, padding_idx=0)
         # item feature mlp
         self.item_feature_mlp = nn.Sequential(
-            nn.Linear(embedding_dim, 128),
+            nn.Linear(item_feature_dim, 128),
             nn.ReLU(),
             nn.Linear(128, embedding_dim)
         )
@@ -28,14 +22,13 @@ class TwoTowerModel(nn.Module):
 
     def encode_user(self, user_ids):
         u = self.user_id_embedding(user_ids)
-        u = self.user_id_mlp(u) # MLP
         return F.normalize(u, dim=-1)
 
     def encode_item(self, item_ids, item_features):
         v_id = self.item_id_embedding(item_ids)
         v_feature = self.item_feature_mlp(item_features) # MLP
-        v_item_input = torch.cat([v_id,v_feature],dim=1)
-        v = self.item_tower(v_item_input)
+        concat = torch.cat([v_id,v_feature],dim=-1)
+        v = self.item_tower(concat)
         return F.normalize(v, dim=-1)
 
     def forward(self, user_ids, item_ids, item_features):
