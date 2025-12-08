@@ -16,6 +16,8 @@ PROCESSED_DIR: str = _raw_config["preprocess"]["PROCESSED_DIR"]
 NUM_EPOCHS: int = _raw_config["train"]["num_epochs"]
 BATCH_SIZE: int = _raw_config["train"]["batch_size"]
 LR: float = _raw_config["train"]["lr"]
+NUM_NEGATIVES: int = _raw_config["train"]["num_negatives"]
+TEMPERATURE: float = _raw_config["train"]["temperature"]
 
 # model
 EMBEDDING_DIM: int = _raw_config["model"]["embedding_dim"]
