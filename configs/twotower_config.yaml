@@ -1,9 +1,9 @@
 preprocess:
-  PROCESSED_DIR: "/content/drive/MyDrive/CS7643-GroupProject-Colab/processed"
+  PROCESSED_DIR: "/content/drive/MyDrive/CS7643-GroupProject-Colab/save"
 train:
-  batch_size: 512
+  batch_size: 128
   lr: 0.001
-  num_epochs: 3
+  num_epochs: 10
 model:
   embedding_dim: 64
 eval:

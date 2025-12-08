@@ -33,7 +33,7 @@ def contrastive_loss(u: torch.Tensor, v: torch.Tensor, temperature: float = 1.0)
     loss = F.cross_entropy(logits, labels)
     return loss
 
-def train(num_epochs: int = 10, temperature: float = 1.0, model_save_path: str = None, item_emb_save_path: str = None):
+def train(num_epochs: int = 10, temperature: float = 0.1, model_save_path: str = None, item_emb_save_path: str = None):
     set_seed(42)
     device = get_device()
     print(f"Using device: {device}")
@@ -59,7 +59,7 @@ def train(num_epochs: int = 10, temperature: float = 1.0, model_save_path: str =
         train_dataset,
         batch_size=BATCH_SIZE,
         shuffle=True,
-        num_workers=4,
+        num_workers=2,
     )
 
     # 2. initialize model
@@ -81,11 +81,12 @@ def train(num_epochs: int = 10, temperature: float = 1.0, model_save_path: str =
         progress_bar = tqdm(train_loader, desc=f"Epoch [{epoch}/{num_epochs}]", ncols=80)
         for batch in progress_bar:
             user_ids = batch["user_id"].to(device)
+            history_item_ids = batch["history_item_ids"].to(device)
             item_ids = batch["item_id"].to(device)
             item_features = batch['item_feature'].to(device)
 
             # forward
-            u, v = model(user_ids, item_ids, item_features)
+            u, v = model(user_ids, history_item_ids, item_ids, item_features)
 
             # calculate loss
             loss = contrastive_loss(u, v, temperature=temperature)
