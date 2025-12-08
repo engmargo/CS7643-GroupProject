@@ -1,0 +1,7 @@
+data: 
+  path: "Electronics.csv.gz"
+  file_type: "csv" 
+  split: ["train", "test", "validation"]
+  split_ratios: [0.8, 0.1, 0.1]
+  min_rating: 4.0
+  save_path: "./processed_data/"

@@ -1,0 +1,16 @@
+dataset:
+  processed_dir: "processed"  # Parent directory containing the domain folder
+  name: "Electronics"         # Domain name
+  
+  num_user_features: 16       # Dimension for random user initialization
+  num_product_features: 768   # Must match the loaded item_features_np dimension
+
+model:
+  hidden_channels: 64
+
+train:
+  batch_size: 1024
+  learning_rate: 0.001
+  epochs: 50
+  weight_decay: 0.0001
+  device: "cuda"
