@@ -5,7 +5,7 @@ train:
   lr: 0.0001
   num_epochs: 10
   num_negatives: 20
-  temperature: 0.1
+  temperature: 0.05
 model:
   embedding_dim: 128
 eval:
