@@ -1,10 +1,12 @@
 preprocess:
   PROCESSED_DIR: "/content/drive/MyDrive/CS7643-GroupProject-Colab/save"
 train:
-  batch_size: 128
-  lr: 0.001
+  batch_size: 256
+  lr: 0.0001
   num_epochs: 10
+  num_negatives: 20
+  temperature: 0.1
 model:
-  embedding_dim: 64
+  embedding_dim: 128
 eval:
   topk_list: [10, 50, 100]

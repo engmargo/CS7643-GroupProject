@@ -4,14 +4,34 @@ import numpy as np
 from load_processed_data import unzip, load_processed_data, get_ft_by_inter
 
 class TwoTowerTrainDataset(Dataset):
-    def __init__(self, hf_dataset, data_maps, item_features, max_history_len: int = 20):
+    def __init__(self, hf_dataset, data_maps, item_features, max_history_len, num_negatives):
         self.hf_dataset = hf_dataset           # HuggingFace Dataset: train / valid / test
         self.data_maps = data_maps
         self.item_features = item_features     # numpy array, shape (num_items+1, 768)
         self.max_history_len = max_history_len
+        self.num_items = item_features.shape[0]
+        self.num_negatives = num_negatives
+
+        # user -> set(pos_item_ids)
+        self.user2items = {}
+        for row in hf_dataset:
+            u = data_maps["user2id"][row["user_id"]]
+            i = data_maps["item2id"][row["item_id"]]
+            self.user2items.setdefault(u, set()).add(i)
 
     def __len__(self):
         return len(self.hf_dataset)
+
+    def _sample_negatives(self, user_id):
+        """get negative samples: sample from no-interaction items"""
+        pos_items = self.user2items[user_id]
+        neg_ids = []
+        while len(neg_ids) < self.num_negatives:
+            j = np.random.randint(0, self.num_items - 1)
+            if j in pos_items:
+                continue
+            neg_ids.append(j)
+        return neg_ids
 
     def __getitem__(self, idx):
         # get one interaction
@@ -42,10 +62,16 @@ class TwoTowerTrainDataset(Dataset):
         target_item_id = inter["item_id"]
         item_idx = self.data_maps["item2id"].get(target_item_id, 0)
 
+        # 4. negative samples
+        neg_item_ids = self._sample_negatives(user_idx)  # list：length N
+        neg_item_features = self.item_features[neg_item_ids] # (N, FEATURE_DIM)
+
         return {
-            "user_id": torch.tensor(user_idx, dtype=torch.long),  # ()
-            "history_item_ids": torch.tensor(hist, dtype=torch.long),  # (L,)
-            "item_id": torch.tensor(item_idx, dtype=torch.long),  # ()
-            "item_feature": torch.tensor(item_ft, dtype=torch.float32),  # (FEATURE_DIM,)
-        }
+                "user_id": torch.tensor(user_idx, dtype=torch.long),  # ()
+                "history_item_ids": torch.tensor(hist, dtype=torch.long),  # (L,)
+                "item_id": torch.tensor(item_idx, dtype=torch.long),  # ()
+                "item_feature": torch.tensor(item_ft, dtype=torch.float32),  # (FEATURE_DIM,)
+                "neg_item_ids": torch.tensor(neg_item_ids, dtype=torch.long),  # (N,)
+                "neg_item_features": torch.tensor(neg_item_features, dtype=torch.float32)
+            }
 

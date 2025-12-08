@@ -25,7 +25,7 @@ def get_device() -> torch.device:
     return torch.device("cpu")
 
 
-def contrastive_loss(u: torch.Tensor, v: torch.Tensor, temperature: float = 1.0):
+def contrastive_loss(u: torch.Tensor, v: torch.Tensor, temperature: float = TEMPERATURE):
     # u, v: shape (B, D)
     # contrastive loss: info Noise-Contrastive Estimation (InfoNCE)
     logits = (u @ v.t()) / temperature
@@ -33,7 +33,7 @@ def contrastive_loss(u: torch.Tensor, v: torch.Tensor, temperature: float = 1.0)
     loss = F.cross_entropy(logits, labels)
     return loss
 
-def train(num_epochs: int = 10, temperature: float = 0.1, model_save_path: str = None, item_emb_save_path: str = None):
+def train(num_epochs: int = 10, temperature: float = TEMPERATURE, model_save_path: str = None, item_emb_save_path: str = None):
     set_seed(42)
     device = get_device()
     print(f"Using device: {device}")
@@ -53,6 +53,8 @@ def train(num_epochs: int = 10, temperature: float = 0.1, model_save_path: str =
         hf_dataset=datasets_dict["train"],
         data_maps=data_maps,
         item_features=item_features_np,
+        max_history_len=20,
+        num_negatives=NUM_NEGATIVES
     )
 
     train_loader = DataLoader(
@@ -85,11 +87,37 @@ def train(num_epochs: int = 10, temperature: float = 0.1, model_save_path: str =
             item_ids = batch["item_id"].to(device)
             item_features = batch['item_feature'].to(device)
 
+            neg_item_ids = batch["neg_item_ids"].to(device)
+            neg_item_features = batch["neg_item_features"].to(device)
+
             # forward
-            u, v = model(user_ids, history_item_ids, item_ids, item_features)
+            # positive item embedding
+            user_emb, pos_item_emb = model(user_ids, history_item_ids, item_ids, item_features)
+            # negative item embedding
+            B, N, Fdim = neg_item_features.shape
+            neg_item_ids_flat = neg_item_ids.view(-1)
+            neg_item_features_flat = neg_item_features.view(B * N, Fdim)  # (B*N, F)
+            neg_item_emb_flat = model.encode_item(neg_item_ids_flat, neg_item_features_flat)
+            neg_item_emb = neg_item_emb_flat.view(B, N, -1)
 
             # calculate loss
-            loss = contrastive_loss(u, v, temperature=temperature)
+            # positive sample scores (B,)
+            pos_scores = (user_emb * pos_item_emb).sum(dim=-1) / temperature
+
+            # negative sample scores (B,N)
+            # neg_item_emb: (B, N, D)
+            # user_emb.unsqueeze(-1): (B, D, 1)
+            neg_scores = torch.bmm(neg_item_emb, user_emb.unsqueeze(-1)).squeeze(-1)  # (B, N)
+            neg_scores = neg_scores / temperature
+
+            #combined pos_scores and neg_scores into one logits (B, N+1)
+            logits = torch.cat([pos_scores.unsqueeze(1), neg_scores], dim=1)
+            labels = torch.zeros(B, dtype=torch.long, device=device)
+
+            # cross entropy loss when having negative samples
+            loss = F.cross_entropy(logits, labels)
+
+            #loss = contrastive_loss(u, v, temperature=temperature)
 
             # backward
             optimizer.zero_grad()

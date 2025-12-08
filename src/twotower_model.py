@@ -37,8 +37,8 @@ class TwoTowerModel(nn.Module):
         return F.normalize(u, dim=-1)
 
     def encode_item(self, item_ids, item_features):
-        #print("item_ids shape:", item_ids.shape) torch.Size([128, 20])
-        #print("item_features shape:", item_features.shape) torch.Size([128, 768])
+        #print("item_ids shape:", item_ids.shape)
+        #print("item_features shape:", item_features.shape)
         v_id = self.item_id_embedding(item_ids)
         v_feature = self.item_feature_mlp(item_features) # MLP
         concat = torch.cat([v_id,v_feature],dim=-1)
