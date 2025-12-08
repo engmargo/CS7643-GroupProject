@@ -99,7 +99,7 @@ def build_graph_data(config):
 
 def train_epoch(model, optimizer, data, train_edge_index, batch_size):
     """
-    Performs one epoch of training using Mini-Batch SGD.
+    Performs one epoch of training using Mini-Batch SGD with BPR Loss.
     """
     model.train()
     
@@ -128,8 +128,6 @@ def train_epoch(model, optimizer, data, train_edge_index, batch_size):
         batch_neg_edges = torch.stack([batch_pos_edges[0], neg_items], dim=0)
         
         # 3. Forward Pass
-        # Note: We pass the FULL graph structure (data.edge_index_dict) for message passing context,
-        # but we only predict/compute loss on the BATCH edges.
         pos_pred = model(data.x_dict, data.edge_index_dict, batch_pos_edges)
         neg_pred = model(data.x_dict, data.edge_index_dict, batch_neg_edges)
         
@@ -151,8 +149,6 @@ def train_epoch(model, optimizer, data, train_edge_index, batch_size):
 @torch.no_grad()
 def evaluate(model, data, edge_index):
     model.eval()
-    # For evaluation, we can process all edges at once if memory allows, 
-    # otherwise we should batch this too. Given standard validation sizes, this usually fits.
     pred = model(data.x_dict, data.edge_index_dict, edge_index)
     return pred.mean().item()
 
@@ -197,6 +193,10 @@ def main():
         if epoch % 1 == 0:
             val_score = evaluate(model, data, valid_idx)
             print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Val Pos Score: {val_score:.4f}')
+    
+    save_path = "gnn_model.pt"
+    torch.save(model.state_dict(), save_path)
+    print(f"Training complete. Model saved to {save_path}")
 
 if __name__ == "__main__":
     main()
