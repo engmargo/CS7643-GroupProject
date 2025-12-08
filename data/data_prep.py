@@ -4,7 +4,7 @@ import datasets
 from datasets import get_dataset_config_names,load_dataset,Dataset
 import os
 import sys 
-from data.generate_features import generate_ft
+from .generate_features import generate_ft
 import yaml
 import os
 import sys 

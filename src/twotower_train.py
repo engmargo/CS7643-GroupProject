@@ -7,7 +7,7 @@ from tqdm import tqdm
 from torch.optim import Adam
 from twotower_config import *
 from twotower_model import TwoTowerModel
-from load_processed_data import unzip, load_processed_data, get_ft_by_inter
+from load_processed_data import  load_processed_data
 from twotower_dataset import TwoTowerTrainDataset
 
 
@@ -42,8 +42,8 @@ def train(num_epochs: int = 10, temperature: float = 1.0, model_save_path: str =
     DOMAIN = "Electronics"
     #ZIP_PATH = "processed_data.zip"
     #temp_dir = unzip(ZIP_PATH, DOMAIN)
-    temp_dir = "/content/drive/MyDrive/CS7643-GroupProject-Colab/processed"
-    data_maps, item_features_np, datasets_dict = load_processed_data(temp_dir, DOMAIN)
+    # temp_dir = "/content/drive/MyDrive/CS7643-GroupProject-Colab/processed"
+    data_maps, item_features_np, datasets_dict = load_processed_data(PROCESSED_DIR, DOMAIN)
 
     num_users = len(data_maps["user2id"])  # includes index 0 (PAD)
     num_items = len(data_maps["item2id"])  # includes index 0 (PAD)
@@ -106,7 +106,7 @@ def train(num_epochs: int = 10, temperature: float = 1.0, model_save_path: str =
     if model_save_path is None:
         model_save_path = os.path.join(PROCESSED_DIR, "two_tower_model.pt")
     if item_emb_save_path is None:
-        item_emb_save_path = os.path.join(PROCESSED_DIR, "item_embeddings.pt")
+        item_emb_save_path = os.path.join(PROCESSED_DIR, "two_tower_item_embeddings.pt")
 
     os.makedirs(PROCESSED_DIR, exist_ok=True)
 
@@ -131,6 +131,6 @@ def train(num_epochs: int = 10, temperature: float = 1.0, model_save_path: str =
     )
     print(f"All item embeddings are saved to: {item_emb_save_path}")
 
-
+    
 if __name__ == "__main__":
     train(num_epochs=NUM_EPOCHS)
