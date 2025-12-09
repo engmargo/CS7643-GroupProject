@@ -7,7 +7,15 @@ from twotower_config import *
 from twotower_model import TwoTowerModel
 from load_processed_data import unzip, load_processed_data, get_ft_by_inter
 from twotower_dataset import TwoTowerTrainDataset
+import argparse
+import time 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--split', type=str, default='test')
+    return parser.parse_args()
+
+args = parse_args()
 
 def get_device() -> torch.device:
     if torch.cuda.is_available():
@@ -23,10 +31,6 @@ def load_model_and_items(
     model_path: str = None,
     item_emb_path: str = None,
 ):
-    """
-    根据 data_maps 和 item_features 的形状创建 TwoTowerModel，
-    加载训练好的参数和保存好的 item_embeddings。
-    """
     num_users = len(data_maps["user2id"])
     num_items = len(data_maps["item2id"])
     item_feature_dim = item_features.shape[1]
@@ -35,7 +39,7 @@ def load_model_and_items(
     if model_path is None:
         model_path = os.path.join(PROCESSED_DIR, "two_tower_model.pt")
     if item_emb_path is None:
-        item_emb_path = os.path.join(PROCESSED_DIR, "item_embeddings.pt")
+        item_emb_path = os.path.join(PROCESSED_DIR, "two_tower_item_embeddings.pt")
 
     # initialize model
     model = TwoTowerModel(
@@ -59,23 +63,30 @@ def load_model_and_items(
 
 
 def eval_twotower(
-    split: str = "valid",
+    split: str = 'test',
     batch_size: int = 128,
     max_history_len: int = 20,
+    topk = (10,20,50)
 ):
     device = get_device()
     print(f"Using device: {device}")
 
     # 1. load dataset
     DOMAIN = "Electronics"
-    temp_dir = "/content/drive/MyDrive/CS7643-GroupProject-Colab/processed"
+    temp_dir = PROCESSED_DIR
     data_maps, item_features_np, datasets_dict = load_processed_data(temp_dir, DOMAIN)
 
+    user2pos_items = {}
+    for row in datasets_dict[split]:
+        u = data_maps["user2id"][row["user_id"]]
+        i = data_maps["item2id"][row["item_id"]]
+        user2pos_items.setdefault(u, set()).add(i)
+        
     eval_dataset = TwoTowerTrainDataset(
         hf_dataset=datasets_dict[split],
         data_maps=data_maps,
         item_features=item_features_np,
-        max_history_len=20,
+        max_history_len=max_history_len,
         num_negatives=NUM_NEGATIVES
     )
 
@@ -93,21 +104,21 @@ def eval_twotower(
         device=device,
     )
 
-    # 3. calculate Recall@K / MRR@K
-    topk_list = sorted(TOPK_LIST)
-    max_k = max(topk_list)
-
-    metrics = {f"Recall@{k}": 0.0 for k in topk_list}
-    metrics.update({f"MRR@{k}": 0.0 for k in topk_list})
+    # 3. calculate metrics
+    metrics = {f"Recall@{k}": 0.0 for k in topk}
+    metrics.update({f"Precision@{k}": 0.0 for k in topk})
+    metrics.update({f"NDCG@{k}": 0.0 for k in topk})
 
     num_samples = 0
 
     with torch.no_grad():
+        times = []
         for batch in eval_loader:
             user_ids = batch["user_id"].to(device)
             history_item_ids = batch["history_item_ids"].to(device)
             target_item_ids = batch["item_id"].to(device)
 
+            t0 = time.time()
             # user embeddings
             user_emb = model.encode_user(user_ids, history_item_ids)  # (B, D)
             user_emb = F.normalize(user_emb, dim=1)
@@ -115,39 +126,42 @@ def eval_twotower(
             # similarity scores to all items
             scores = torch.matmul(user_emb, all_item_emb.t())     # (B, num_items)
 
-            topk_scores, topk_indices = torch.topk(scores, k=max_k, dim=1)  # (B, max_k)
+            for k in topk:
+                topk_scores, topk_idx = torch.topk(scores, k=k, dim=1)
+                for i, u_idx in enumerate(user_ids.tolist()):
+                    pos_items = user2pos_items.get(u_idx, set())
+                    if not pos_items:
+                        continue
+                    hits = [1 if item in pos_items else 0 for item in topk_idx[i].tolist()]
+                    num_pos = len(pos_items)
+                    # Recall@K
+                    metrics[f"Recall@{k}"] += sum(hits) / num_pos
+                    # Precision@K
+                    metrics[f"Precision@{k}"] += sum(hits) / k
+                    # NDCG@K
+                    dcg = sum([h / torch.log2(torch.tensor(idx + 2.0)) for idx, h in enumerate(hits)])
+                    idcg = sum([1.0 / torch.log2(torch.tensor(j + 2.0)) for j in range(min(num_pos, k))])
+                    if idcg > 0:
+                        metrics[f"NDCG@{k}"] += (dcg / idcg).item()
 
-            batch_size_actual = user_ids.size(0)
-            num_samples += batch_size_actual
-
-            for i in range(batch_size_actual):
-                target = target_item_ids[i].item()
-                ranked = topk_indices[i].tolist()  # 长度 max_k
-
-                for k in topk_list:
-                    topk_items = ranked[:k]
-
-                    # hit / recall
-                    hit = 1.0 if target in topk_items else 0.0
-                    metrics[f"Recall@{k}"] += hit  # Recall==hit
-
-                    # MRR@K
-                    if hit:
-                        rank = topk_items.index(target) + 1  # 1-based
-                        metrics[f"MRR@{k}"] += 1.0 / rank
+            num_samples += len(user_ids)
+            t1 = time.time()
+            times.append(t1 - t0)
 
     # 5. mean
     for key in metrics:
-        metrics[key] /= float(num_samples)
+        metrics[key] /= num_samples
 
-    print(f"\n[Two-Tower] Evaluation on split = {split}")
-    for k in topk_list:
-        r = metrics[f"Recall@{k}"]
-        m = metrics[f"MRR@{k}"]
-        print(f"  Recall@{k}: {r:.4f} | MRR@{k}: {m:.4f}")
-
-    return metrics
+    print(f"[{split}]Evaluation Metrics:")
+    for k, v in metrics.items():
+        print(f"{k}: {v:.4f}")
+    
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print("Total parameters:", total_params)
+    print("Trainable parameters:", trainable_params)
+    print('Avg Inference Latency:',(sum(times) / len(times)) / batch_size*1000)
 
 
 if __name__ == "__main__":
-    eval_twotower(split="test")
+    eval_twotower(args.split)

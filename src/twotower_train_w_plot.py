@@ -7,8 +7,9 @@ from tqdm import tqdm
 from torch.optim import Adam
 from twotower_config import *
 from twotower_model import TwoTowerModel
-from load_processed_data import  load_processed_data
+from load_processed_data import load_processed_data
 from twotower_dataset import TwoTowerTrainDataset
+import matplotlib.pyplot as plt
 
 
 def set_seed(seed: int = 42) -> None:
@@ -32,6 +33,41 @@ def contrastive_loss(u: torch.Tensor, v: torch.Tensor, temperature: float = TEMP
     labels = torch.arange(u.size(0), device=u.device)
     loss = F.cross_entropy(logits, labels)
     return loss
+
+def compute_validation_loss(model, valid_loader, temperature, device):
+    model.eval()
+    total_loss = 0
+    batches = 0
+
+    with torch.no_grad():
+        for batch in valid_loader:
+            user_ids = batch["user_id"].to(device)
+            history_item_ids = batch["history_item_ids"].to(device)
+            item_ids = batch["item_id"].to(device)
+            item_features = batch['item_feature'].to(device)
+
+            neg_item_ids = batch["neg_item_ids"].to(device)
+            neg_item_features = batch["neg_item_features"].to(device)
+
+            user_emb, pos_item_emb = model(user_ids, history_item_ids, item_ids, item_features)
+
+            B, N, Fdim = neg_item_features.shape
+            neg_ids_flat = neg_item_ids.view(-1)
+            neg_features_flat = neg_item_features.view(B*N, Fdim)
+            neg_item_emb_flat = model.encode_item(neg_ids_flat, neg_features_flat)
+            neg_item_emb = neg_item_emb_flat.view(B, N, -1)
+
+            pos_scores = (user_emb * pos_item_emb).sum(dim=-1) / temperature
+            neg_scores = torch.bmm(neg_item_emb, user_emb.unsqueeze(-1)).squeeze(-1) / temperature
+
+            logits = torch.cat([pos_scores.unsqueeze(1), neg_scores], dim=1)
+            labels = torch.zeros(B, dtype=torch.long, device=device)
+
+            loss = F.cross_entropy(logits, labels)
+            total_loss += loss.item()
+            batches += 1
+
+    return total_loss / batches
 
 def train(num_epochs: int = 10, temperature: float = TEMPERATURE, model_save_path: str = None, item_emb_save_path: str = None):
     set_seed(42)
@@ -63,7 +99,25 @@ def train(num_epochs: int = 10, temperature: float = TEMPERATURE, model_save_pat
         shuffle=True,
         num_workers=2,
     )
+    
+    valid_dataset = TwoTowerTrainDataset(
+    hf_dataset=datasets_dict["valid"],
+    data_maps=data_maps,
+    item_features=item_features_np,
+    max_history_len=20,
+    num_negatives=NUM_NEGATIVES
+    )
 
+    valid_loader = DataLoader(
+        valid_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        num_workers=2,
+    )
+
+    train_losses = []
+    valid_losses = []
+    
     # 2. initialize model
     model = TwoTowerModel(
         num_users=num_users,
@@ -75,8 +129,8 @@ def train(num_epochs: int = 10, temperature: float = TEMPERATURE, model_save_pat
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 
     # 3. train
-    model.train()
     for epoch in range(1, num_epochs + 1):
+        model.train()
         epoch_loss = 0.0
         num_batches = 0
 
@@ -118,7 +172,6 @@ def train(num_epochs: int = 10, temperature: float = TEMPERATURE, model_save_pat
             loss = F.cross_entropy(logits, labels)
 
             #loss = contrastive_loss(u, v, temperature=temperature)
-
             # backward
             optimizer.zero_grad()
             loss.backward()
@@ -129,8 +182,31 @@ def train(num_epochs: int = 10, temperature: float = TEMPERATURE, model_save_pat
             progress_bar.set_postfix(loss=f"{loss.item():.4f}")
 
         avg_loss = epoch_loss / max(num_batches, 1)
-        print(f"Epoch {epoch}: avg loss = {avg_loss:.4f}")
+        
+        # record losses in each epoch
+        train_losses.append(avg_loss)
+        valid_loss = compute_validation_loss(model,valid_loader,temperature,device)
+        valid_losses.append(valid_loss)
+        
+        print(f"Epoch {epoch}: [training] avg loss = {avg_loss:.4f}; [valid] avg loss = {valid_loss:.4f}")
 
+    # plot loss
+    plt.figure(figsize=(7,5))
+    plt.plot(train_losses, label='Train Loss')
+    plt.plot(valid_losses, label='Valid Loss')
+
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Train vs Validation Loss")
+    plt.grid(True)
+    plt.legend()
+    
+    os.makedirs('img_output',exist_ok=True)
+    plt.savefig(os.path.join('img_output','two_tower_loss.png'), dpi=300)  
+    plt.show()
+    plt.close() 
+
+    
     # 4. save model
     if model_save_path is None:
         model_save_path = os.path.join(PROCESSED_DIR, "two_tower_model.pt")

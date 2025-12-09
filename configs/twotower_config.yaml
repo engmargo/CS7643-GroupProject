@@ -8,3 +8,5 @@ train:
   temperature: 0.05
 model:
   embedding_dim: 128
+eval:
+  topk_list: [10, 50, 100]
