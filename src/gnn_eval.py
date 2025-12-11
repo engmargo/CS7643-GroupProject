@@ -104,7 +104,7 @@ def evaluate_gnn():
         user_ids=eval_user_ids,      # List of user indices to test
         user2pos_items=user2pos_items,
         all_item_emb=item_emb_all,   # Pass the product embeddings from GNN
-        topk=config.get('eval', {}).get('topk_list', [10, 50, 100]), 
+        topk=config.get('eval', {}).get('topk_list', [10, 20, 50]), 
         device=device,
         batch_size=config['train']['batch_size']
     )
